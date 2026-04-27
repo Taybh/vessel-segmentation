@@ -1,0 +1,12 @@
+myenv/
+__pycache__/
+*.pyc
+
+checkpoints/
+*.pt
+
+data/
+*.nii
+*.nii.gz
+
+.DS_Store

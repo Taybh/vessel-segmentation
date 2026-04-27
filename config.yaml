@@ -1,0 +1,21 @@
+data_dir: "./data/trainValidation"
+
+model_name: "facebook/sam-vit-base"
+
+seed: 42
+val_ratio: 0.2
+
+patch_size: 256
+step: 256
+batch_size: 1 #20
+num_workers: 2
+positive_only: true
+min_mask_sum: 20
+
+epochs: 50
+learning_rate: 0.01
+
+checkpoint_dir: "./checkpoints"
+
+loss_names: ["dice_ce", "dice_focal", "tversky"]
+root_dir: "./"
