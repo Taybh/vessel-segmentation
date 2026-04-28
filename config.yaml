@@ -1,5 +1,4 @@
 data_dir: "./data/trainValidation"
-
 model_name: "facebook/sam-vit-base"
 
 seed: 42
@@ -18,4 +17,5 @@ learning_rate: 0.01
 checkpoint_dir: "./checkpoints"
 
 loss_names: ["dice_ce", "dice_focal", "tversky"]
+fine_tune_methods: ["lora", "mask_decoder"]
 root_dir: "./"

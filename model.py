@@ -1,4 +1,5 @@
 from transformers import SamModel
+from peft import LoraConfig, get_peft_model
 
 def build_sam_finetune_mask_decoder(model_name: str):
     model = SamModel.from_pretrained(model_name)
@@ -9,3 +10,20 @@ def build_sam_finetune_mask_decoder(model_name: str):
             param.requires_grad_(False)
 
     return model
+
+def build_sam_finetune_lora(model_name: str):
+    model = SamModel.from_pretrained(model_name)
+
+    lora_config = LoraConfig(
+        r=8,
+        lora_alpha=16,
+        target_modules=["qkv"],
+        lora_dropout=0.05,
+        bias="none"
+    )
+
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+
+    return model
+

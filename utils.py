@@ -35,13 +35,11 @@ def save_checkpoint(
 ):
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    filename = (
-        f"best_{loss_name}"
-        f"_epoch_{epoch+1}"
-        f"_valloss_{val_loss:.4f}.pt"
+    checkpoint_file = os.path.join(
+        checkpoint_dir,
+        f"best_{fine_tune_method}_{loss_name}_"
+        f"epoch_{epoch+1}_valloss_{val_loss:.4f}.pt"
     )
-
-    path = os.path.join(checkpoint_dir, filename)
 
     torch.save(
         {
@@ -52,7 +50,7 @@ def save_checkpoint(
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict()
         },
-        path
+        checkpoint_file
     )
 
-    return path
+    return checkpoint_file

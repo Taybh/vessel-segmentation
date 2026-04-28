@@ -5,7 +5,7 @@ from tqdm import tqdm
 from transformers import SamProcessor
 
 from dataset import create_datasets_and_loaders
-from model import build_sam_finetune_mask_decoder
+from model import build_sam_finetune_mask_decoder, build_sam_finetune_lora
 from losses import get_loss_function
 from utils import load_config, set_seed, get_device, save_checkpoint
 
@@ -18,6 +18,9 @@ def train_one_epoch(model, train_loader, optimizer, loss_fn, device):
         input_boxes = batch["input_boxes"].to(device)
         ground_truth_masks = batch["ground_truth_mask"].float().to(device)
 
+        if ground_truth_masks.ndim == 3:
+           ground_truth_masks = ground_truth_masks.unsqueeze(1)
+
         outputs = model(
             pixel_values=pixel_values,
             input_boxes=input_boxes,
@@ -25,6 +28,9 @@ def train_one_epoch(model, train_loader, optimizer, loss_fn, device):
         )
 
         predicted_masks = outputs.pred_masks
+
+        if predicted_masks.ndim == 5:
+            predicted_masks = predicted_masks.squeeze(2)
 
         if predicted_masks.shape[-2:] != ground_truth_masks.shape[-2:]:
             predicted_masks = F.interpolate(
@@ -55,6 +61,9 @@ def validate_one_epoch(model, val_loader, loss_fn, device):
             input_boxes = batch["input_boxes"].to(device)
             ground_truth_masks = batch["ground_truth_mask"].float().to(device)
 
+        if  ground_truth_masks.ndim == 3:
+            ground_truth_masks = ground_truth_masks.unsqueeze(1)
+
             outputs = model(
                 pixel_values=pixel_values,
                 input_boxes=input_boxes,
@@ -62,6 +71,9 @@ def validate_one_epoch(model, val_loader, loss_fn, device):
             )
 
             predicted_masks = outputs.pred_masks
+
+            if  predicted_masks.ndim == 5:
+                predicted_masks = predicted_masks.squeeze(2)
 
             if predicted_masks.shape[-2:] != ground_truth_masks.shape[-2:]:
                 predicted_masks = F.interpolate(
@@ -83,8 +95,6 @@ def main():
 
     device = get_device()
     print("Using device:", device)
-
-    os.makedirs(config["checkpoint_dir"], exist_ok=True)
 
     processor = SamProcessor.from_pretrained(config["model_name"])
 
@@ -109,40 +119,58 @@ def main():
         lr=config["learning_rate"]
     )
 
-    for loss_name in config["loss_names"]:
-        loss_fn = get_loss_function(loss_name)
+    for fine_tune_method in config["fine_tune_methods"]:
+        for loss_name in config["loss_names"]:
 
-        best_val_loss = float("inf")
+            print(f"\nStarting experiment: {fine_tune_method} + {loss_name}")
+            loss_fn = get_loss_function(loss_name)
 
-        checkpoint_path = os.path.join(
-            config["checkpoint_dir"],
-            loss_name, "best_model.pt")
-        
-        for epoch in range(config["epochs"]):
+            best_val_loss = float("inf")
 
-            train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, device)
-            val_loss = validate_one_epoch(model, val_loader, loss_fn, device)
+            if fine_tune_method == "mask_decoder":
+                model = build_sam_finetune_mask_decoder(config["model_name"])
 
-            print(
-                f"{loss_name} | "
-                f"Epoch {epoch+1} | "
-                f"Train {train_loss:.4f} | "
-                f"Val {val_loss:.4f}"
+            elif fine_tune_method == "lora":
+                model = build_sam_finetune_lora(config["model_name"])
+                
+            model.to(device)
+            optimizer = torch.optim.AdamW(
+                filter(lambda p: p.requires_grad, model.parameters()),
+                lr=config["learning_rate"]
             )
+
+            checkpoint_dir = os.path.join(
+                config["checkpoint_dir"],
+                fine_tune_method,
+                loss_name)
             
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                    
-                save_checkpoint(
-                    model=model,
-                    optimizer=optimizer,
-                    epoch=epoch,
-                    train_loss=train_loss,
-                    val_loss=val_loss,
-                    loss_name=loss_name,
-                    checkpoint_dir=checkpoint_path
+            for epoch in range(config["epochs"]):
+
+                train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, device)
+                val_loss = validate_one_epoch(model, val_loader, loss_fn, device)
+
+                print(
+                    f"{fine_tune_method} | "
+                    f"{loss_name} | "
+                    f"Epoch {epoch+1} | "
+                    f"Train {train_loss:.4f} | "
+                    f"Val {val_loss:.4f}"
                 )
-                print(f"Saved best checkpoint: {checkpoint_path}")
+                
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                        
+                    saved_path = save_checkpoint(
+                        model=model,
+                        optimizer=optimizer,
+                        epoch=epoch,
+                        train_loss=train_loss,
+                        val_loss=val_loss,
+                        loss_name=loss_name,
+                        fine_tune_method=fine_tune_method,
+                        checkpoint_dir=checkpoint_dir
+                    )
+                    print(f"Saved best checkpoint: {saved_path}")
 
 
 if __name__ == "__main__":
