@@ -31,6 +31,7 @@ def save_checkpoint(
     train_loss,
     val_loss,
     loss_name,
+    fine_tune_method,
     checkpoint_dir
 ):
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -45,6 +46,7 @@ def save_checkpoint(
         {
             "epoch": epoch+1,
             "loss_name": loss_name,
+            "fine_tune_method": fine_tune_method,
             "train_loss": train_loss,
             "val_loss": val_loss,
             "model_state_dict": model.state_dict(),
