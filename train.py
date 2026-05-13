@@ -99,7 +99,7 @@ def main():
     processor = SamProcessor.from_pretrained(config["model_name"])
 
     train_dataset, val_dataset, train_loader, val_loader = create_datasets_and_loaders(
-        root_dir=config["root_dir"],
+        data_dir=config["data_dir"],
         processor=processor,
         val_ratio=config["val_ratio"],
         seed=config["seed"],
