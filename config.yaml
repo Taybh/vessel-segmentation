@@ -1,4 +1,4 @@
-data_dir: "./data/trainValidation"
+data_dir: "./data/trainValidation_set"
 model_name: "facebook/sam-vit-base"
 
 seed: 42
