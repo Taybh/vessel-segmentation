@@ -346,6 +346,7 @@ def create_datasets_and_loaders(
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
     ### Test the dataset
     nii = nib.load('sub004.nii.gz')  # or .nii
     # Get image data as a NumPy array

@@ -18,3 +18,7 @@ checkpoint_dir: "./checkpoints"
 loss_names: ["dice_ce", "dice_focal", "tversky"]
 fine_tune_methods: ["lora", "mask_decoder"]
 data_dir: "./data/trainValidation_set"
+
+test_dir: "./data/test_set"
+threshold: 0.5
+test_results_csv: "test_results.csv"
