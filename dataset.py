@@ -62,11 +62,11 @@ def build_patch_index_for_volume(
 
     return index
 
-def find_data_mask_pairs(root_dir: str) -> List[Tuple[Path, Path]]:
+def find_data_mask_pairs(data_dir: str) -> List[Tuple[Path, Path]]:
     """
     Find .nii.gz data files and .nii mask files and match them by basename.
     """
-    root = Path(root_dir)
+    root = Path(data_dir)
 
     data_files = sorted(root.rglob("*.nii.gz"))
     mask_files = sorted([f for f in root.rglob("*.nii") if not str(f).endswith(".nii.gz")])
@@ -279,7 +279,7 @@ class PatchDataset(Dataset):
         return inputs
 
 def create_datasets_and_loaders(
-    root_dir: str,
+    data_dir: str,
     processor,
     val_ratio: float = 0.2,
     seed: int = 42,
@@ -297,7 +297,7 @@ def create_datasets_and_loaders(
     3. create datasets
     4. create dataloaders
     """
-    pairs = find_data_mask_pairs(root_dir)
+    pairs = find_data_mask_pairs(data_dir)
     train_pairs, val_pairs = split_train_val(pairs, val_ratio=val_ratio, seed=seed)
 
     print(f"Train volumes: {len(train_pairs)}")
