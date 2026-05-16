@@ -4,6 +4,10 @@ from peft import LoraConfig, get_peft_model
 def build_sam_finetune_mask_decoder(model_name: str):
     model = SamModel.from_pretrained(model_name)
 
+    for name, _ in model.named_parameters():
+        if "vision" in name or "prompt" in name:
+            print(name)
+
     # freeze image encoder and prompt encoder
     for name, param in model.named_parameters():
         if name.startswith("vision_encoder") or name.startswith("prompt_encoder"):
@@ -13,6 +17,11 @@ def build_sam_finetune_mask_decoder(model_name: str):
 
 def build_sam_finetune_lora(model_name: str):
     model = SamModel.from_pretrained(model_name)
+
+
+    for name, module in model.named_modules():
+        if "qkv" in name:
+            print(name)
 
     lora_config = LoraConfig(
         r=8,
