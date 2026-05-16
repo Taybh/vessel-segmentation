@@ -111,14 +111,6 @@ def main():
         min_mask_sum=config["min_mask_sum"],
     )
 
-    model = build_sam_finetune_mask_decoder(config["model_name"])
-    model.to(device)
-               
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=config["learning_rate"]
-    )
-
     for fine_tune_method in config["fine_tune_methods"]:
         for loss_name in config["loss_names"]:
 
