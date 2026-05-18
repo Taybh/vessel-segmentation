@@ -13,6 +13,7 @@ from dataset import get_bounding_box
 
 import numpy as np
 from skimage.morphology import skeletonize
+from model import build_sam_finetune_lora, build_sam_finetune_mask_decoder
 
 def prepare_masks(pred_masks, gt_masks):
     if pred_masks.ndim == 5:
