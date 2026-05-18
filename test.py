@@ -31,7 +31,7 @@ def prepare_masks(pred_masks, gt_masks):
 
     return pred_masks, gt_masks
 
- def compute_cldice(pred_bin, gt_masks, eps=1e-7):
+def compute_cldice(pred_bin, gt_masks, eps=1e-7):
     """
     pred_bin: [B,1,H,W] binary tensor
     gt_masks: [B,1,H,W] binary tensor
