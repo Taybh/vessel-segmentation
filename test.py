@@ -255,7 +255,8 @@ def main():
                 checkpoint_dir = os.path.join(
                     config["checkpoint_dir"],
                     fine_tune_method,
-                    loss_name
+                    loss_name, 
+                    "best"
                 )
 
                 model = load_model_for_testing(
