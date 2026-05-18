@@ -21,7 +21,7 @@ def build_sam_finetune_lora(model_name: str):
 
     for name, module in model.named_modules():
         if "qkv" in name:
-            print(name)
+            print(name) # vision_encoder.layers.0.attn.qkv , vision_encoder.layers.1.attn.qkv, vision_encoder.layers.2.attn.qkv
 
     lora_config = LoraConfig(
         r=8,
