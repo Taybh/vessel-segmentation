@@ -22,3 +22,12 @@ data_dir: "./data/trainValidation_set"
 test_dir: "./data/test_set"
 threshold: 0.5
 test_results_csv: "test_results.csv"
+
+
+visualization_slice_idx: null
+auto_select_slice: true
+
+visualization_dir: "prediction_visualizations"
+
+models_to_visualize:
+  - ["lora", "dice_focal"]
