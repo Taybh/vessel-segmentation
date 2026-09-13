@@ -15,13 +15,17 @@ def load_config(path):
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
-    random.Random(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    torch.manual_seed(seed) #affects random operations performed by PyTorch
+    torch.cuda.manual_seed_all(seed) # Seeds all CUDA GPUs
 
 
 def get_device():
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        return "cuda"
+    elif torch.backends.mps.is_available():
+        return "mps"
+    else:
+        return "cpu"
 
 
 def save_checkpoint(
@@ -50,7 +54,7 @@ def save_checkpoint(
             "train_loss": train_loss,
             "val_loss": val_loss,
             "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict()
+            "optimizer_state_dict": optimizer.state_dict() #resume training later
         },
         checkpoint_file
     )
