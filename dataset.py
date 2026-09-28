@@ -1,5 +1,6 @@
 import nibabel as nib
 from pathlib import Path
+from functools import partial
 import random
 import numpy as np
 from typing import List, Tuple, Dict, Optional
@@ -17,9 +18,10 @@ def strip_nii_suffix(name: str) -> str:
         return name[:-4]
     return name
 
+
 def normalize_image(slice_2d: np.ndarray) -> np.ndarray:
     """
-    Simple min-max normalization per slice.
+    Simple min-max normalization per slice/patch -> values in [0, 1].
     """
     slice_2d = slice_2d.astype(np.float32)
     vmin = slice_2d.min()
@@ -29,6 +31,7 @@ def normalize_image(slice_2d: np.ndarray) -> np.ndarray:
     else:
         slice_2d = np.zeros_like(slice_2d, dtype=np.float32)
     return slice_2d
+
 
 def load_nifti_image(file_path: Path, is_mask: bool = False) -> np.ndarray:
     """
@@ -42,6 +45,7 @@ def load_nifti_image(file_path: Path, is_mask: bool = False) -> np.ndarray:
     if is_mask:
         return data.astype(np.uint8)
     return data.astype(np.float32)
+
 
 def build_patch_index_for_volume(
     shape: Tuple[int, int, int],
@@ -58,9 +62,10 @@ def build_patch_index_for_volume(
     for z in range(z_dim):
         for x in range(0, x_dim - patch_size + 1, step):
             for y in range(0, y_dim - patch_size + 1, step):
-                index.append((z, x, y))  
+                index.append((z, x, y))
 
     return index
+
 
 def find_data_mask_pairs(data_dir: str) -> List[Tuple[Path, Path]]:
     """
@@ -91,6 +96,7 @@ def find_data_mask_pairs(data_dir: str) -> List[Tuple[Path, Path]]:
 
     return pairs
 
+
 def split_train_val(
     pairs: List[Tuple[Path, Path]],
     val_ratio: float = 0.2,
@@ -109,28 +115,33 @@ def split_train_val(
 
     return train_pairs, val_pairs
 
-#Get bounding boxes from mask.
-def get_bounding_box(ground_truth_map):
-  # get bounding box from mask
-  y_indices, x_indices = np.where(ground_truth_map > 0)
-  # handle empty mask
-  if len(x_indices) == 0:
-    H, W = ground_truth_map.shape
-    return [0, 0, W - 1, H - 1]
 
+def get_bounding_box(ground_truth_map, perturb=True):
+    """
+    Bounding-box prompt [x_min, y_min, x_max, y_max] from a 2D mask.
 
-  x_min, x_max = np.min(x_indices), np.max(x_indices)
-  y_min, y_max = np.min(y_indices), np.max(y_indices)
+    perturb=True  -> randomly enlarge the box by 0-19 px per side (training augmentation)
+    perturb=False -> tight, deterministic box (validation / test)
+    """
+    y_indices, x_indices = np.where(ground_truth_map > 0)
 
-  # add perturbation to bounding box coordinates
-  H, W = ground_truth_map.shape
-  x_min = max(0, x_min - np.random.randint(0, 20))
-  x_max = min(W-1, x_max + np.random.randint(0, 20))
-  y_min = max(0, y_min - np.random.randint(0, 20))
-  y_max = min(H-1, y_max + np.random.randint(0, 20))
-  bbox = [x_min, y_min, x_max, y_max]
+    # handle empty mask
+    if len(x_indices) == 0:
+        H, W = ground_truth_map.shape
+        return [0, 0, W - 1, H - 1]
 
-  return bbox
+    x_min, x_max = np.min(x_indices), np.max(x_indices)
+    y_min, y_max = np.min(y_indices), np.max(y_indices)
+
+    if perturb:
+        H, W = ground_truth_map.shape
+        x_min = max(0, x_min - np.random.randint(0, 20))
+        x_max = min(W - 1, x_max + np.random.randint(0, 20))
+        y_min = max(0, y_min - np.random.randint(0, 20))
+        y_max = min(H - 1, y_max + np.random.randint(0, 20))
+
+    return [int(x_min), int(y_min), int(x_max), int(y_max)]
+
 
 class PatchDataset(Dataset):
     """
@@ -151,16 +162,22 @@ class PatchDataset(Dataset):
         step: int = 256,
         normalize: bool = True,
         positive_only: bool = False,
-        min_mask_sum: int = 1
+        min_mask_sum: int = 1,
+        preload: bool = True,
     ):
         """
         Args:
             pairs: list of (image_path, mask_path)
+            get_bounding_box_fn: function(mask) -> box
+                (use partial(get_bounding_box, perturb=False) for val/test)
             patch_size: 2D patch size
             step: stride between patches
-            normalize: whether to min-max normalize each image patch/slice
+            normalize: whether to min-max normalize each image patch
             positive_only: if True, keep only patches with some mask foreground
             min_mask_sum: minimum number of positive pixels to keep a mask patch
+            preload: if True, keep all volumes in RAM (fast with shuffle=True).
+                     If False, fall back to caching one volume at a time
+                     (low RAM, but slow with shuffling).
         """
         self.pairs = pairs
         self.processor = processor
@@ -170,11 +187,16 @@ class PatchDataset(Dataset):
         self.normalize = normalize
         self.positive_only = positive_only
         self.min_mask_sum = min_mask_sum
+        self.preload = preload
 
         # stores (volume_idx, z, x, y)
         self.patch_index: List[Tuple[int, int, int, int]] = []
 
-        # Optional simple cache to avoid reloading the same volume repeatedly
+        # all volumes in RAM (used when preload=True)
+        self.images: List[np.ndarray] = []
+        self.masks: List[np.ndarray] = []
+
+        # single-volume cache (used when preload=False)
         self._cached_volume_idx: Optional[int] = None
         self._cached_image: Optional[np.ndarray] = None
         self._cached_mask: Optional[np.ndarray] = None
@@ -183,8 +205,8 @@ class PatchDataset(Dataset):
 
     def _build_index(self):
         """
-        Build patch index lazily from volume shapes only.
-        This is much lighter than precomputing and storing actual patches.
+        Load every volume once, build the patch index, and (if preload=True)
+        keep the volumes in RAM so __getitem__ never has to read from disk.
         """
         for volume_idx, (img_path, mask_path) in enumerate(self.pairs):
             img = load_nifti_image(img_path, is_mask=False)
@@ -211,19 +233,24 @@ class PatchDataset(Dataset):
                 for z, x, y in coords:
                     self.patch_index.append((volume_idx, z, x, y))
 
-            # release immediately
-            del img
-            del mask
+            if self.preload:
+                self.images.append(img)
+                self.masks.append(mask)
+            else:
+                del img
+                del mask
 
         print(f"Total patches indexed: {len(self.patch_index)}")
+        if self.preload:
+            gb = sum(a.nbytes for a in self.images + self.masks) / 1e9
+            print(f"Volumes kept in RAM: {len(self.images)} ({gb:.2f} GB)")
 
     def __len__(self):
         return len(self.patch_index)
 
     def _load_volume_if_needed(self, volume_idx: int):
         """
-        Cache one volume pair at a time.
-        Helpful when DataLoader accesses nearby indices.
+        Only used when preload=False: cache one volume pair at a time.
         """
         if self._cached_volume_idx == volume_idx:
             return
@@ -236,24 +263,26 @@ class PatchDataset(Dataset):
     def __getitem__(self, idx: int):
         volume_idx, z, x, y = self.patch_index[idx]
 
-        self._load_volume_if_needed(volume_idx)
-
-        image = self._cached_image
-        mask = self._cached_mask
+        if self.preload:
+            image = self.images[volume_idx]
+            mask = self.masks[volume_idx]
+        else:
+            self._load_volume_if_needed(volume_idx)
+            image = self._cached_image
+            mask = self._cached_mask
 
         # extract 2D patch from slice z
         img_patch = image[x:x+self.patch_size, y:y+self.patch_size, z]
         mask_patch = mask[x:x+self.patch_size, y:y+self.patch_size, z]
 
         if self.normalize:
-            img_patch = normalize_image(img_patch)
+            img_patch = normalize_image(img_patch)          # -> [0, 1]
         else:
             img_patch = img_patch.astype(np.float32)
 
         mask_patch = mask_patch.astype(np.uint8)
 
-        # SAM usually expects image-like input, often HxW or HxWx3
-        # If grayscale, repeat to 3 channels
+        # grayscale -> 3 identical channels (H, W, 3) for SAM
         image_for_processor = img_patch
         if image_for_processor.ndim == 2:
             image_for_processor = np.stack([image_for_processor] * 3, axis=-1)
@@ -264,19 +293,28 @@ class PatchDataset(Dataset):
         prompt = self.get_bounding_box_fn(ground_truth_mask)
 
         # prepare image and prompt for the model
+        # do_rescale=False: the image is already in [0, 1]; without this the
+        # processor divides by 255 again and SAM sees an almost blank image.
         inputs = self.processor(
             image_for_processor,
             input_boxes=[[prompt]],
+            do_rescale=False,
             return_tensors="pt"
         )
 
-        # remove batch dimension added by processor
-        inputs = {k: v.squeeze(0) for k, v in inputs.items()}
+        # remove batch dimension added by processor, and convert float64 -> float32.
+        # SamProcessor returns input_boxes as float64; Apple GPUs (MPS) cannot use
+        # float64, and CUDA/SAM compute in float32 anyway, so this is safe everywhere.
+        inputs = {
+            k: (v.float() if v.is_floating_point() else v).squeeze(0)
+            for k, v in inputs.items()
+        }
 
         # add ground truth segmentation
         inputs["ground_truth_mask"] = torch.from_numpy(ground_truth_mask).float()
 
         return inputs
+
 
 def create_datasets_and_loaders(
     data_dir: str,
@@ -289,6 +327,7 @@ def create_datasets_and_loaders(
     num_workers: int = 0,
     positive_only: bool = True,
     min_mask_sum: int = 1,
+    preload: bool = True,
 ):
     """
     Full pipeline:
@@ -306,23 +345,25 @@ def create_datasets_and_loaders(
     train_dataset = PatchDataset(
         pairs=train_pairs,
         processor=processor,
-        get_bounding_box_fn=get_bounding_box,
+        get_bounding_box_fn=get_bounding_box,                          # random box jitter
         patch_size=patch_size,
         step=step,
         normalize=True,
         positive_only=positive_only,
         min_mask_sum=min_mask_sum,
+        preload=preload,
     )
 
     val_dataset = PatchDataset(
         pairs=val_pairs,
         processor=processor,
-        get_bounding_box_fn=get_bounding_box,
+        get_bounding_box_fn=partial(get_bounding_box, perturb=False),  # fixed boxes
         patch_size=patch_size,
         step=step,
         normalize=True,
         positive_only=positive_only,
         min_mask_sum=min_mask_sum,
+        preload=preload,
     )
 
     train_loader = DataLoader(
@@ -330,7 +371,8 @@ def create_datasets_and_loaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),   # pinning only helps (and is only supported) on NVIDIA GPUs
+        persistent_workers=num_workers > 0,
     )
 
     val_loader = DataLoader(
@@ -338,11 +380,11 @@ def create_datasets_and_loaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),   # pinning only helps (and is only supported) on NVIDIA GPUs
+        persistent_workers=num_workers > 0,
     )
 
     return train_dataset, val_dataset, train_loader, val_loader
-
 
 
 if __name__ == "__main__":
@@ -355,7 +397,7 @@ if __name__ == "__main__":
     print("Data type:", data.dtype)
     print("Orientation:", nib.aff2axcodes(nii.affine))
 
-    # Show a middle slice 
+    # Show a middle slice
     slice_idx = data.shape[2] // 2
     plt.imshow(data[:, :, slice_idx], cmap='gray')
     plt.title(f"Slice {slice_idx}")

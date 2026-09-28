@@ -1,5 +1,10 @@
 model_name: "facebook/sam-vit-base"
 
+backbones:
+  - sam
+  - medicosam
+  - sam_med2d
+
 seed: 42
 val_ratio: 0.2
 
@@ -11,17 +16,20 @@ positive_only: true
 min_mask_sum: 20
 
 epochs: 50
-learning_rate: 0.01
+preload_volumes: auto
+early_stopping_patience: 5
+debug_epochs: 2
+learning_rate: 0.0001
 
-checkpoint_dir: "./checkpoints"
+checkpoint_dir: "./checkpoints_lora_losses"
 
-loss_names: ["dice_ce", "dice_focal", "tversky"]
-fine_tune_methods: ["lora", "mask_decoder"]
+loss_names: ["dice", "ce", "dice_ce", "dice_focal", "tversky", "focal_tversky", "cldice", "dice_cldice"]
+fine_tune_methods: ["lora"] #, "mask_decoder", "adapter"
 data_dir: "./data/trainValidation_set"
 
 test_dir: "./data/test_set"
 threshold: 0.5
-test_results_csv: "test_results.csv"
+test_results_csv: "test_results_lora_losses.csv"
 
 
 visualization_slice_idx: null
@@ -31,3 +39,5 @@ visualization_dir: "prediction_visualizations"
 
 models_to_visualize:
   - ["lora", "dice_focal"]
+
+resume: false
