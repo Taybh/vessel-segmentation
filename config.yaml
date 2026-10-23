@@ -23,7 +23,7 @@ learning_rate: 0.0001
 
 checkpoint_dir: "./checkpoints_lora_losses"
 
-loss_names: ["dice", "ce", "dice_ce", "dice_focal", "tversky", "focal_tversky", "cldice", "dice_cldice"]
+loss_names: ["dice", "ce", "dice_ce", "dice_focal", "tversky", "focal_tversky"]#, "cldice", "dice_cldice"
 fine_tune_methods: ["lora"] #, "mask_decoder", "adapter"
 data_dir: "./data/trainValidation_set"
 
@@ -41,3 +41,7 @@ models_to_visualize:
   - ["lora", "dice_focal"]
 
 resume: false
+
+eval_thresholds: [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+tune_threshold_on_val: true
+test_output_dir: "./checkpoints_lora_losses/test_results"
