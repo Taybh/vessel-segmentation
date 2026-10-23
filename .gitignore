@@ -1,6 +1,8 @@
 myenv/
 __pycache__/
 *.pyc
+extra/
+logs_previous/
 
 checkpoints/
 *.pt
