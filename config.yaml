@@ -12,7 +12,7 @@ patch_size: 256
 step: 256
 batch_size: 1 #20
 num_workers: 2
-positive_only: true
+positive_only: false
 min_mask_sum: 20
 
 epochs: 50
